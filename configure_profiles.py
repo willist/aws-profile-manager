@@ -11,11 +11,6 @@ token = sso_login()
 
 # TODO: Move this to a config file
 sso_profile_prefix = "sso"
-role_mapping = {
-    'Admin': 'admin',
-    'Audit': 'audit',
-    'ReadOnly': 'read',
-}
 
 valid_sso_profiles = set()
 
@@ -39,7 +34,7 @@ for account in account_paginator.paginate(accessToken=token).search('accountList
     account_id = account['accountId']
 
     for role in role_paginator.paginate(accessToken=token, accountId=account_id).search('roleList'):
-        role_name = role_mapping.get(role['roleName'], role['roleName'])
+        role_name = role['roleName'].lower().replace(' ', '-')
         profile_name = "profile " + "-".join(filter(None, [sso_profile_prefix, name, role_name]))
 
         valid_sso_profiles.add(profile_name)
