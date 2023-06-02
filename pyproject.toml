@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "manage-profiles"
+name = "aws-profile-manager"
 version = "0.0.2"
 dependencies = [
     "boto3",
