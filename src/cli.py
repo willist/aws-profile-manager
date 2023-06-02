@@ -168,7 +168,7 @@ def sort_profiles(ctx, aws_config, dry_run):
 @click.option(
     '--start-url',
     required=True,
-    envvar="MP_START_URL",
+    envvar="AWS_SSO_START_URL",
     show_envvar=True,
     help="The start URL for your SSO instance.",
 )
@@ -201,7 +201,7 @@ def list_accounts(ctx, start_url):
 @click.option(
     '--start-url',
     required=True,
-    envvar="MP_START_URL",
+    envvar="AWS_SSO_START_URL",
     show_envvar=True,
     help="The start URL for your SSO instance.",
 )
