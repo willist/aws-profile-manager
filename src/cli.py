@@ -66,7 +66,10 @@ def get_roles_for_account(start_url, account_id, region):
 )
 @pass_context
 def cli(ctx, log_level, log_file, region):
-    """Does cool stuff?"""
+    """
+    Helper for managing AWS profiles with SSO.
+    """
+
     ctx.obj = {
         "log_level": log_level,
         "log_file": log_file,
