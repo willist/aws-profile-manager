@@ -12,7 +12,7 @@ cache.mkdir(exist_ok=True, parents=True)
 oidc = boto3.client('sso-oidc')
 
 
-def sso_login(start_url='https://divvydose.awsapps.com/start#/'):
+def get_sso_token(start_url):
     cached_token_path = cache.joinpath('profile_manager_token.json')
     try:
         with cached_token_path.open() as f:

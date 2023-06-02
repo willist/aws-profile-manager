@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "manage-profiles"
+version = "0.0.1"
+dependencies = [
+    "boto3",
+    "click",
+    "click-config-file",
+    "tabulate",
+]
+
+[tool.setuptools.packages]
+find = {}
+
+[project.scripts]
+mp = "src.cli:main"

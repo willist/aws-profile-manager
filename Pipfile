@@ -5,6 +5,8 @@ name = "pypi"
 
 [packages]
 boto3 = "*"
+# manage_profiles = {path = "src", editable = true}
+tabulate = "*"
 
 [dev-packages]
 
