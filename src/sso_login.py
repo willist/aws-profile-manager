@@ -9,10 +9,10 @@ import boto3
 cache = Path.home().joinpath(".aws/sso/cache")
 cache.mkdir(exist_ok=True, parents=True)
 
-oidc = boto3.client('sso-oidc')
 
+def get_sso_token(start_url, region):
+    oidc = boto3.client('sso-oidc', region_name=region)
 
-def get_sso_token(start_url):
     cached_token_path = cache.joinpath('profile_manager_token.json')
     try:
         with cached_token_path.open() as f:

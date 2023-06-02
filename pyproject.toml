@@ -8,7 +8,6 @@ version = "0.0.1"
 dependencies = [
     "boto3",
     "click",
-    "click-config-file",
     "tabulate",
 ]
 
@@ -16,4 +15,4 @@ dependencies = [
 find = {}
 
 [project.scripts]
-mp = "src.cli:main"
+aws-profile-manager = "src.cli:main"

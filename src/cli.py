@@ -16,9 +16,6 @@ DEFAULT_LOG_LEVEL = "INFO"
 DEFAULT_LOG_FILE = Path().joinpath('manage-profiles.log')
 
 
-client = boto3.client('sso')
-
-
 def create_logger(ctx):
     logger = logging.getLogger("manage-profiles")
     logger.setLevel(ctx.obj["log_level"])
@@ -43,14 +40,16 @@ def slugify(value):
     return value.lower().replace(' ', '-')
 
 
-def get_accounts(start_url):
-    token = get_sso_token(start_url=start_url)
+def get_accounts(start_url, region):
+    token = get_sso_token(start_url=start_url, region=region)
+    client = boto3.client('sso', region_name=region)
     account_paginator = client.get_paginator('list_accounts')
     return account_paginator.paginate(accessToken=token).search('accountList[].{Name: accountName, Id: accountId}')
 
 
-def get_roles_for_account(account_id, start_url):
-    token = get_sso_token(start_url=start_url)
+def get_roles_for_account(start_url, account_id, region):
+    token = get_sso_token(start_url=start_url, region=region)
+    client = boto3.client('sso', region_name=region)
     role_paginator = client.get_paginator('list_account_roles')
     return role_paginator.paginate(accessToken=token, accountId=account_id).search('roleList[].roleName')
 
@@ -62,6 +61,7 @@ def get_roles_for_account(account_id, start_url):
     '--region',
     envvar="AWS_DEFAULT_REGION",
     show_envvar=True,
+    default="us-west-2",
     help="The AWS region to use.",
 )
 @pass_context
@@ -72,38 +72,6 @@ def cli(ctx, log_level, log_file, region):
         "log_file": log_file,
         "region": region,
     }
-
-
-@cli.command()
-@click.option(
-    '--start-url',
-    required=True,
-    envvar="MP_START_URL",
-    show_envvar=True,
-    help="The start URL for your SSO instance.",
-)
-@pass_context
-def accounts(ctx, start_url):
-    """
-    Get information about the AWS accounts you have access to.
-    """
-    logger = create_logger(ctx)
-
-    #log options
-    logger.info(f"start_url: {start_url}")
-
-    accounts = get_accounts(start_url)
-    data = (
-        {
-            # f"{prefix}-{slugify(account['Name'])}-{slugify(role)}",
-            "Account Name": account['Name'],
-            "Account Id": account['Id'],
-            "Role": role,
-        }
-        for account in get_accounts(start_url)
-        for role in get_roles_for_account(account['Id'], start_url)
-    )
-    click.echo(tabulate(sorted(data, key=lambda x: str.casefold(x["Account Name"])), headers="keys"))
 
 
 @cli.command()
@@ -120,7 +88,7 @@ def accounts(ctx, start_url):
     show_default=True,
 )
 @pass_context
-def profiles(ctx, aws_config, prefix):
+def list_profiles(ctx, aws_config, prefix):
     """
     Get information about the AWS profiles you have configured.
     """
@@ -142,15 +110,88 @@ def profiles(ctx, aws_config, prefix):
         {
             "Profile": p.removeprefix("profile "),
             "SSO": u'\N{check mark}' if 'sso_start_url' in config[p] else '',
-            "Region": config[p].get('region'),
             "Account Id": config[p].get('sso_account_id'),
             "Role": config[p].get('sso_role_name'),
             "MFASerial": config[p].get('mfa_serial'),
+            "SSO Region": config[p].get('sso_region'),
+            "Region": config[p].get('region'),
         }
         for p in profiles
     ]
 
     click.echo(tabulate(data, headers="keys"))
+
+
+@cli.command()
+@click.option(
+    '--aws-config',
+    default=Path().home().joinpath(".aws/config"),
+    help="The path to your AWS config file",
+    show_default=True,
+)
+@click.option(
+    '--dry-run',
+    help="Don't actually make any changes.",
+    default=False,
+    is_flag=True,
+    show_default=True,
+)
+@pass_context
+def sort_profiles(ctx, aws_config, dry_run):
+    """
+    Sort your AWS config profiles.
+    """
+    logger = create_logger(ctx)
+
+    logger.info(f"aws_config: {aws_config}")
+
+    input_config = configparser.ConfigParser()
+    with Path(aws_config).open() as f:
+        input_config.read_file(f)
+
+    output_config = configparser.ConfigParser({}, dict_type=OrderedDict)
+
+    for section in sorted(input_config.sections()):
+        output_config[section] = input_config[section]
+
+    if not dry_run:
+        with Path(aws_config).open("w") as f:
+            output_config.write(f)
+    else:
+        output_config.write(click.get_text_stream("stdout"))
+
+
+@cli.command()
+@click.option(
+    '--start-url',
+    required=True,
+    envvar="MP_START_URL",
+    show_envvar=True,
+    help="The start URL for your SSO instance.",
+)
+@pass_context
+def list_accounts(ctx, start_url):
+    """
+    Get information about the AWS accounts you have access to.
+    """
+    logger = create_logger(ctx)
+
+    #log options
+    logger.info(f"start_url: {start_url}")
+
+    data = []
+    with click.progressbar(length=100, fill_char=".", empty_char="", bar_template='Fetching accounts...%(bar)s') as bar:
+        for account in get_accounts(start_url, ctx.obj["region"]):
+            for role in get_roles_for_account(start_url, account['Id'], ctx.obj["region"]):
+                bar.update(1)
+                data.append({
+                    "Account Name": account['Name'],
+                    "Account Id": account['Id'],
+                    "Role": role,
+                })
+
+    click.echo(tabulate(sorted(data, key=lambda x: str.casefold(x["Account Name"])), headers="keys"))
+
 
 
 @cli.command()
@@ -181,9 +222,9 @@ def profiles(ctx, aws_config, prefix):
     show_default=True,
 )
 @pass_context
-def sync(ctx, start_url, aws_config, prefix, dry_run):
+def sso_sync(ctx, start_url, aws_config, prefix, dry_run):
     """
-    Sync your AWS config file with your available SSO based AWS accounts.
+    Sync your SSO based AWS accounts as AWS config profiles.
     """
     logger = create_logger(ctx)
 
@@ -202,8 +243,8 @@ def sync(ctx, start_url, aws_config, prefix, dry_run):
     valid_sso_profiles = set()
 
     # add new profiles
-    for account in get_accounts(start_url):
-        for role in get_roles_for_account(account['Id'], start_url):
+    for account in get_accounts(start_url, ctx.obj['region']):
+        for role in get_roles_for_account(start_url, account['Id'], ctx.obj['region']):
             profile_name = f"{prefix}-{slugify(account['Name'])}-{slugify(role)}"
             valid_sso_profiles.add(profile_name)
             if profile_name not in existing_sso_profiles:
@@ -215,7 +256,7 @@ def sync(ctx, start_url, aws_config, prefix, dry_run):
                     "sso_start_url": start_url,
                     "sso_account_id": account['Id'],
                     "sso_role_name": role,
-                    "sso_region": "us-east-1",
+                    "sso_region": ctx.obj['region'],
                 }
 
     # remove old profiles that match the prefix
@@ -238,43 +279,6 @@ def sync(ctx, start_url, aws_config, prefix, dry_run):
         click.echo("No changes to make.")
 
 
-@cli.command()
-@click.option(
-    '--aws-config',
-    default=Path().home().joinpath(".aws/config"),
-    help="The path to your AWS config file",
-    show_default=True,
-)
-@click.option(
-    '--dry-run',
-    help="Don't actually make any changes.",
-    default=False,
-    is_flag=True,
-    show_default=True,
-)
-@pass_context
-def sort(ctx, aws_config, dry_run):
-    """
-    Sort your AWS config file.
-    """
-    logger = create_logger(ctx)
-
-    logger.info(f"aws_config: {aws_config}")
-
-    input_config = configparser.ConfigParser()
-    with Path(aws_config).open() as f:
-        input_config.read_file(f)
-
-    output_config = configparser.ConfigParser({}, dict_type=OrderedDict)
-
-    for section in sorted(input_config.sections()):
-        output_config[section] = input_config[section]
-
-    if not dry_run:
-        with Path(aws_config).open("w") as f:
-            output_config.write(f)
-    else:
-        output_config.write(click.get_text_stream("stdout"))
 
 
 main = cli()
