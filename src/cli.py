@@ -102,7 +102,9 @@ def list_profiles(ctx, aws_config, prefix):
     logger.info(f"prefix: {prefix}")
 
     config = configparser.ConfigParser()
-    with open(aws_config) as f:
+    file = Path(aws_config)
+    file.touch()
+    with file.open() as f:
         config.read_file(f)
 
     profiles = (p for p in config.sections())
